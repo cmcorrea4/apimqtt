@@ -17,7 +17,7 @@ st.set_page_config(
 # Configuración MQTT - Usando HiveMQ público
 MQTT_BROKER = "broker.hivemq.com"  # Broker público
 MQTT_PORT = 1883
-MQTT_TOPIC = "sensores/temperatura-humedad"  # Tópico único para evitar conflictos
+MQTT_TOPIC = "sensor_st"  # Tópico único para evitar conflictos
 
 # Inicialización de variables en session state
 if 'sensor_data' not in st.session_state:
