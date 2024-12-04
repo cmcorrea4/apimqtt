@@ -5,7 +5,6 @@ from datetime import datetime
 import pandas as pd
 from collections import deque
 import time
-import os
 
 # Configuración de la página
 st.set_page_config(
@@ -15,9 +14,9 @@ st.set_page_config(
 )
 
 # Configuración MQTT - Usando HiveMQ público
-MQTT_BROKER = "broker.hivemq.com"  # Broker público
+MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
-MQTT_TOPIC = "sensor_st"  # Tópico único para evitar conflictos
+MQTT_TOPIC = "sensores/temperatura-humedad"
 
 # Inicialización de variables en session state
 if 'sensor_data' not in st.session_state:
@@ -28,7 +27,7 @@ if 'sensor_data' not in st.session_state:
         'last_temp': 0,
         'last_hum': 0,
         'connected': False,
-        'client_id': f'streamlit-client-{int(time.time())}'  # ID único para cada instancia
+        'client_id': f'streamlit-client-{int(time.time())}'
     }
 
 # Callbacks MQTT
@@ -166,7 +165,7 @@ elif endpoint == "Current Values":
     st.json(current_data)
     
     if st.button("Actualizar valores"):
-        st.experimental_rerun()
+        st.rerun()
 
 elif endpoint == "History":
     st.title("📜 Historial de Mediciones")
@@ -190,6 +189,7 @@ elif endpoint == "History":
     else:
         st.info("No hay datos históricos disponibles")
 
-# Actualización automática
-time.sleep(0.1)
-st.experimental_rerun()
+# Actualización automática usando st.rerun() en lugar de experimental_rerun
+if st.session_state.sensor_data['connected']:
+    time.sleep(2)
+    st.rerun()
