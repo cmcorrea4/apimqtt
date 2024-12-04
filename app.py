@@ -16,7 +16,7 @@ st.set_page_config(
 # Configuración MQTT - Usando HiveMQ público
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
-MQTT_TOPIC = "sensores/temperatura-humedad"
+MQTT_TOPIC = "sensor_st"  # Modificado el tópico aquí
 
 # Inicialización de variables en session state
 if 'sensor_data' not in st.session_state:
@@ -101,8 +101,7 @@ while True:
         "Temperatura": round(random.uniform(20, 30), 1),
         "Humedad": round(random.uniform(40, 80), 1)
     }
-    client.publish("sensores/temperatura-humedad", 
-                  json.dumps(data))
+    client.publish("sensor_st", json.dumps(data))
     time.sleep(2)
     """, language="python")
 
@@ -189,7 +188,7 @@ elif endpoint == "History":
     else:
         st.info("No hay datos históricos disponibles")
 
-# Actualización automática usando st.rerun() en lugar de experimental_rerun
+# Actualización automática
 if st.session_state.sensor_data['connected']:
     time.sleep(2)
     st.rerun()
