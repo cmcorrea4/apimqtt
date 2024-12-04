@@ -6,19 +6,48 @@ import pandas as pd
 from collections import deque
 import time
 
-# Configuración de la página
-st.set_page_config(
-    page_title="Sistema de Monitoreo de Sensores",
-    page_icon="🌡️",
-    layout="wide"
-)
+# Agregar logs de depuración
+def log_debug(message):
+    print(f"[DEBUG] {message}")
+    if 'debug_messages' not in st.session_state:
+        st.session_state.debug_messages = []
+    st.session_state.debug_messages.append(f"{datetime.now()}: {message}")
 
-# Configuración MQTT - Usando HiveMQ público
+# Configuración MQTT
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
-MQTT_TOPIC = "sensor_st"  # Modificado el tópico aquí
+MQTT_TOPIC = "sensor_st"
 
-# Inicialización de variables en session state
+# Callbacks MQTT
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        log_debug(f"✅ Conectado al broker MQTT. Suscrito a: {MQTT_TOPIC}")
+        st.session_state.sensor_data['connected'] = True
+        client.subscribe(MQTT_TOPIC)
+    else:
+        log_debug(f"❌ Error de conexión. Código: {rc}")
+        st.session_state.sensor_data['connected'] = False
+
+def on_message(client, userdata, msg):
+    try:
+        log_debug(f"📨 Mensaje recibido en tópico {msg.topic}")
+        payload = json.loads(msg.payload.decode())
+        log_debug(f"Datos recibidos: {payload}")
+        
+        timestamp = datetime.now()
+        st.session_state.sensor_data['temp_data'].append(payload.get('Temperatura', 0))
+        st.session_state.sensor_data['hum_data'].append(payload.get('Humedad', 0))
+        st.session_state.sensor_data['timestamps'].append(timestamp)
+        st.session_state.sensor_data['last_temp'] = payload.get('Temperatura', 0)
+        st.session_state.sensor_data['last_hum'] = payload.get('Humedad', 0)
+    except Exception as e:
+        log_debug(f"❌ Error al procesar mensaje: {e}")
+
+def on_disconnect(client, userdata, rc):
+    log_debug(f"Desconectado del broker. Código: {rc}")
+    st.session_state.sensor_data['connected'] = False
+
+# Inicialización de session state
 if 'sensor_data' not in st.session_state:
     st.session_state.sensor_data = {
         'temp_data': deque(maxlen=100),
@@ -30,107 +59,55 @@ if 'sensor_data' not in st.session_state:
         'client_id': f'streamlit-client-{int(time.time())}'
     }
 
-# Callbacks MQTT
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
-        st.session_state.sensor_data['connected'] = True
-        client.subscribe(MQTT_TOPIC)
-    else:
-        st.session_state.sensor_data['connected'] = False
-
-def on_message(client, userdata, msg):
-    try:
-        payload = json.loads(msg.payload.decode())
-        timestamp = datetime.now()
-        
-        # Actualizar datos
-        st.session_state.sensor_data['temp_data'].append(payload.get('Temperatura', 0))
-        st.session_state.sensor_data['hum_data'].append(payload.get('Humedad', 0))
-        st.session_state.sensor_data['timestamps'].append(timestamp)
-        st.session_state.sensor_data['last_temp'] = payload.get('Temperatura', 0)
-        st.session_state.sensor_data['last_hum'] = payload.get('Humedad', 0)
-    except Exception as e:
-        st.error(f"Error al procesar mensaje: {e}")
-
 # Configuración del cliente MQTT
 @st.cache_resource
 def get_mqtt_client():
     client = mqtt.Client(client_id=st.session_state.sensor_data['client_id'])
     client.on_connect = on_connect
     client.on_message = on_message
+    client.on_disconnect = on_disconnect
     
     try:
+        log_debug(f"Intentando conectar a {MQTT_BROKER}:{MQTT_PORT}")
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.loop_start()
     except Exception as e:
-        st.error(f"Error al conectar al broker MQTT: {e}")
+        log_debug(f"❌ Error al conectar: {e}")
     return client
 
-# Iniciar cliente MQTT
+# UI principal
+st.title("📊 Sistema de Monitoreo de Sensores")
+
+# Mostrar estado de depuración
+with st.expander("🔍 Debug Info", expanded=True):
+    if 'debug_messages' in st.session_state:
+        for msg in list(st.session_state.debug_messages)[-5:]:  # Mostrar últimos 5 mensajes
+            st.text(msg)
+    
+    if st.button("Limpiar logs"):
+        st.session_state.debug_messages = []
+
+# Cliente MQTT
 mqtt_client = get_mqtt_client()
 
-# Sidebar para API y configuración
-st.sidebar.title("API Endpoints")
-endpoint = st.sidebar.radio(
-    "Seleccionar Endpoint",
-    ["Dashboard", "Current Values", "History"]
-)
+# Interfaz principal
+tab1, tab2, tab3 = st.tabs(["Dashboard", "Valores Actuales", "Historial"])
 
-# Información de conexión en el sidebar
-st.sidebar.divider()
-st.sidebar.subheader("Información de Conexión")
-st.sidebar.code(f"""
-Broker: {MQTT_BROKER}
-Puerto: {MQTT_PORT}
-Tópico: {MQTT_TOPIC}
-""")
-
-# Script de ejemplo en el sidebar
-with st.sidebar.expander("Script de Prueba"):
-    st.code("""
-import paho.mqtt.client as mqtt
-import json
-import time
-import random
-
-client = mqtt.Client()
-client.connect("broker.hivemq.com", 1883, 60)
-
-while True:
-    data = {
-        "Temperatura": round(random.uniform(20, 30), 1),
-        "Humedad": round(random.uniform(40, 80), 1)
-    }
-    client.publish("sensor_st", json.dumps(data))
-    time.sleep(2)
-    """, language="python")
-
-# Contenido principal
-if endpoint == "Dashboard":
-    st.title("📊 Dashboard de Sensores en Tiempo Real")
-    
-    # Estado de conexión y métricas
+with tab1:
     col1, col2, col3 = st.columns(3)
     
     with col1:
         if st.session_state.sensor_data['connected']:
-            st.success("🟢 Conectado al broker MQTT")
+            st.success("🟢 Conectado")
         else:
-            st.error("🔴 Desconectado del broker MQTT")
+            st.error("🔴 Desconectado")
             
     with col2:
-        st.metric(
-            "Temperatura",
-            f"{st.session_state.sensor_data['last_temp']}°C"
-        )
+        st.metric("Temperatura", f"{st.session_state.sensor_data['last_temp']}°C")
         
     with col3:
-        st.metric(
-            "Humedad",
-            f"{st.session_state.sensor_data['last_hum']}%"
-        )
+        st.metric("Humedad", f"{st.session_state.sensor_data['last_hum']}%")
     
-    # Gráficos y datos
     if len(st.session_state.sensor_data['temp_data']) > 0:
         df = pd.DataFrame({
             'Timestamp': list(st.session_state.sensor_data['timestamps']),
@@ -138,55 +115,36 @@ if endpoint == "Dashboard":
             'Humedad': list(st.session_state.sensor_data['hum_data'])
         })
         
-        # Gráfico de temperatura
-        st.subheader("Histórico de Temperatura")
         st.line_chart(df.set_index('Timestamp')['Temperatura'])
-        
-        # Gráfico de humedad
-        st.subheader("Histórico de Humedad")
         st.line_chart(df.set_index('Timestamp')['Humedad'])
-        
-        # Tabla de datos recientes
-        st.subheader("Últimas Mediciones")
-        st.dataframe(df.tail(10).sort_index(ascending=False))
     else:
-        st.info("Esperando datos de los sensores...")
+        st.info("Esperando datos...")
 
-elif endpoint == "Current Values":
-    st.title("🔍 Valores Actuales")
-    
-    current_data = {
-        "timestamp": datetime.now().isoformat(),
-        "temperatura": st.session_state.sensor_data['last_temp'],
-        "humedad": st.session_state.sensor_data['last_hum']
+# Script de ejemplo
+with st.sidebar.expander("📝 Script de Prueba", expanded=True):
+    st.code("""
+import paho.mqtt.client as mqtt
+import json
+import time
+import random
+
+# Crear cliente
+client = mqtt.Client()
+
+# Conectar al broker
+client.connect("broker.hivemq.com", 1883, 60)
+
+# Publicar datos
+while True:
+    data = {
+        "Temperatura": round(random.uniform(20, 30), 1),
+        "Humedad": round(random.uniform(40, 80), 1)
     }
-    
-    st.json(current_data)
-    
-    if st.button("Actualizar valores"):
-        st.rerun()
-
-elif endpoint == "History":
-    st.title("📜 Historial de Mediciones")
-    
-    if len(st.session_state.sensor_data['timestamps']) > 0:
-        history_df = pd.DataFrame({
-            'timestamp': list(st.session_state.sensor_data['timestamps']),
-            'temperatura': list(st.session_state.sensor_data['temp_data']),
-            'humedad': list(st.session_state.sensor_data['hum_data'])
-        })
-        
-        format_option = st.selectbox(
-            "Formato de salida",
-            ["Tabla", "JSON"]
-        )
-        
-        if format_option == "Tabla":
-            st.dataframe(history_df)
-        else:
-            st.json(history_df.to_dict('records'))
-    else:
-        st.info("No hay datos históricos disponibles")
+    # Publicar en el tópico sensor_st
+    client.publish("sensor_st", json.dumps(data))
+    print(f"Datos enviados: {data}")
+    time.sleep(2)
+""", language="python")
 
 # Actualización automática
 if st.session_state.sensor_data['connected']:
