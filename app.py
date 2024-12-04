@@ -35,11 +35,11 @@ def on_message(client, userdata, msg):
         log_debug(f"Datos recibidos: {payload}")
         
         timestamp = datetime.now()
-        st.session_state.sensor_data['temp_data'].append(payload.get('Temperatura', 0))
-        st.session_state.sensor_data['hum_data'].append(payload.get('Humedad', 0))
+        st.session_state.sensor_data['temp_data'].append(payload.get('temperatura', 0))
+        st.session_state.sensor_data['hum_data'].append(payload.get('humedad', 0))
         st.session_state.sensor_data['timestamps'].append(timestamp)
-        st.session_state.sensor_data['last_temp'] = payload.get('Temperatura', 0)
-        st.session_state.sensor_data['last_hum'] = payload.get('Humedad', 0)
+        st.session_state.sensor_data['last_temp'] = payload.get('temperatura', 0)
+        st.session_state.sensor_data['last_hum'] = payload.get('humedad', 0)
     except Exception as e:
         log_debug(f"❌ Error al procesar mensaje: {e}")
 
@@ -76,12 +76,12 @@ def get_mqtt_client():
     return client
 
 # UI principal
-st.title("📊 Sistema de Monitoreo de Sensores")
+st.title("📊 Monitor de Sensores")
 
 # Mostrar estado de depuración
 with st.expander("🔍 Debug Info", expanded=True):
     if 'debug_messages' in st.session_state:
-        for msg in list(st.session_state.debug_messages)[-5:]:  # Mostrar últimos 5 mensajes
+        for msg in list(st.session_state.debug_messages)[-5:]:
             st.text(msg)
     
     if st.button("Limpiar logs"):
@@ -120,31 +120,27 @@ with tab1:
     else:
         st.info("Esperando datos...")
 
-# Script de ejemplo
-with st.sidebar.expander("📝 Script de Prueba", expanded=True):
-    st.code("""
-import paho.mqtt.client as mqtt
-import json
-import time
-import random
-
-# Crear cliente
-client = mqtt.Client()
-
-# Conectar al broker
-client.connect("broker.hivemq.com", 1883, 60)
-
-# Publicar datos
-while True:
-    data = {
-        "Temperatura": round(random.uniform(20, 30), 1),
-        "Humedad": round(random.uniform(40, 80), 1)
+with tab2:
+    st.subheader("Valores en Tiempo Real")
+    current_data = {
+        "timestamp": datetime.now().isoformat(),
+        "temperatura": st.session_state.sensor_data['last_temp'],
+        "humedad": st.session_state.sensor_data['last_hum']
     }
-    # Publicar en el tópico sensor_st
-    client.publish("sensor_st", json.dumps(data))
-    print(f"Datos enviados: {data}")
-    time.sleep(2)
-""", language="python")
+    st.json(current_data)
+
+with tab3:
+    st.subheader("Historial de Mediciones")
+    if len(st.session_state.sensor_data['timestamps']) > 0:
+        history_df = pd.DataFrame({
+            'timestamp': list(st.session_state.sensor_data['timestamps']),
+            'temperatura': list(st.session_state.sensor_data['temp_data']),
+            'humedad': list(st.session_state.sensor_data['hum_data'])
+        })
+        
+        st.dataframe(history_df.tail(10).sort_index(ascending=False))
+    else:
+        st.info("No hay datos históricos disponibles")
 
 # Actualización automática
 if st.session_state.sensor_data['connected']:
